@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>METAR Weather Portal</title>
+    <style>
+        :root {
+            --bg-color: #0b0f17;
+            --card-bg: #111622;
+            --text-main: #ffffff;
+            --text-muted: #64748b;
+            --accent-blue: #38bdf8;
+            --border-color: #1e293b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            padding: 60px 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 24px;
+            letter-spacing: 2px;
+            margin-bottom: 30px;
+            font-weight: 700;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            background: #0f131e;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+        }
+
+        .search-box input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-main);
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .search-box button {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        .search-box button:hover {
+            color: var(--accent-blue);
+        }
+
+        .raw-box {
+            background: #141b2b;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 16px;
+            font-family: monospace;
+            font-size: 14px;
+            color: #94a3b8;
+            letter-spacing: 0.5px;
+            margin-bottom: 30px;
+            min-height: 50px;
+            word-break: break-all;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+        }
+
+        @media (max-width: 640px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 24px;
+            position: relative;
+            min-height: 140px;
+        }
+
+        .card-header {
+            font-size: 11px;
+            color: #38bdf8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .card-value {
+            font-size: 32px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .card-subtext {
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .card-icon {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            font-size: 24px;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>METAR WEATHER PORTAL</h1>
+
+    <div class="search-box">
+        <input type="text" id="icao-input" placeholder="Enter ICAO Code..." maxlength="4">
+        <button id="search-btn">🔍</button>
+    </div>
+
+    <div id="raw-metar" class="raw-box">
+        LOADING DATA PIPELINE MATRIX...
+    </div>
+
+    <div class="grid">
+        <div class="card">
+            <div class="card-header">WIND // VECTOR</div>
+            <div class="card-icon">💨</div>
+            <div id="wind-dir" class="card-value">--°</div>
+            <div id="wind-speed" class="card-subtext">-- KT</div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">TEMP // DATA</div>
+            <div class="card-icon">🌡️</div>
+            <div id="temp-val" class="card-value">--°C</div>
+            <div id="dew-val" class="card-subtext">Dew --°C</div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">VISIBILITY</div>
+            <div class="card-icon">👁️</div>
+            <div id="vis-val" class="card-value">--</div>
+            <div class="card-subtext">Surface Visual Range</div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">CLOUD // LAYER</div>
+            <div class="card-icon">☁️</div>
+            <div id="cloud-code" class="card-value">--</div>
+            <div id="cloud-desc" class="card-subtext">Sky Conditions</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const regionalMetarMatrix = {
+        "VIDP": "VIDP 201200Z 28008KT 4000 HZ FEW030 38/24 Q1004 NOSIG",
+        "VABB": "VABB 201200Z 26012KT 6000 HZ SCT020 BKN100 34/24 Q1008"
+    };
+
+    async function fetchAndDecode() {
+        const inputElement = document.getElementById('icao-input');
+        if (!inputElement) return;
+
+        const icao = inputElement.value.toUpperCase().trim();
+        if (!icao || icao.length < 4) {
+            alert("Please enter a valid 4-letter ICAO code.");
+            return;
+        }
+
+        const rawContainer = document.getElementById('raw-metar');
+        rawContainer.innerText = "FETCHING LIVE WEATHER FROM AVIATION SERVERS...";
+
+        // Added corsproxy.io wrapper directly to bypass the browser security wall
+        const targetUrl = `https://aviationweather.gov/api/data/metar?ids=${icao}&format=raw`;
+        const url = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error("Network stream error");
+            const rawString = await response.text();
+            
+            if (!rawString || rawString.trim() === "" || rawString.includes("Invalid")) {
+                throw new Error("No live data found");
+            }
+
+            rawContainer.innerText = rawString.trim() + " (100% LIVE DATA)";
+            decodeLogic(rawString.trim());
+
+        } catch (error) {
+            console.log("CORS wall hit or offline, pulling from backup simulation...");
+            let localString = regionalMetarMatrix[icao] || `${icao} 201200Z 12008KT 9999 CLR 25/15 Q1013 SIMULATED`;
+            rawContainer.innerText = localString + " (SIMULATED DATA)";
+            decodeLogic(localString);
+        }
+    }
+
+    function decodeLogic(metar) {
+        const tokens = metar.split(" ");
+
+        // 1. Wind Vector
+        const windToken = tokens.find(t => t.endsWith("KT") || t.includes("G"));
+        if (windToken) {
+            const dir = windToken.substring(0, 3);
+            let speed = windToken.substring(3, 5);
+            
+            if (windToken.includes("G")) {
+                speed = windToken.substring(3, windToken.indexOf("KT"));
+            }
+            
+            document.getElementById('wind-dir').innerText = `${dir}°`;
+            document.getElementById('wind-speed').innerText = `${speed.replace('G', ' G ')} KT`;
+        } else {
+            document.getElementById('wind-dir').innerText = "000°";
+            document.getElementById('wind-speed').innerText = "0 KT";
+        }
+
+        // 2. Temperature Data
+        const tempToken = tokens.find(t => t.includes("/") && !t.includes("A") && !t.includes("Q") && !isNaN(t.charAt(0)));
+        if (tempToken) {
+            const parts = tempToken.split("/");
+            document.getElementById('temp-val').innerText = `${parts[0]}°C`;
+            document.getElementById('dew-val').innerText = `Dew ${parts[1]}°C`;
+        }
+
+        // 3. Visibility Parsing
+        const smToken = tokens.find(t => t.endsWith("SM"));
+        if (smToken) {
+            document.getElementById('vis-val').innerText = smToken.toLowerCase();
+        } else {
+            const metersToken = tokens.find(t => /^\d{4}$/.test(t));
+            document.getElementById('vis-val').innerText = metersToken === "9999" ? "10km+" : (metersToken ? `${metersToken}m` : "10km+");
+        }
+
+        // 4. Cloud Formations
+        const cloudTypes = ["FEW", "SCT", "BKN", "OVC"];
+        const cloudToken = tokens.find(t => cloudTypes.some(type => t.startsWith(type)));
+        if (cloudToken) {
+            const typeCode = cloudToken.substring(0, 3);
+            let desc = "Clear Skies";
+            if (typeCode === "FEW") desc = "Few Clouds";
+            if (typeCode === "SCT") desc = "Scattered Clouds";
+            if (typeCode === "BKN") desc = "Broken Clouds";
+            if (typeCode === "OVC") desc = "Overcast Cover";
+            
+            document.getElementById('cloud-code').innerText = cloudToken;
+            document.getElementById('cloud-desc').innerText = desc;
+        } else {
+            document.getElementById('cloud-code').innerText = "CLR";
+            document.getElementById('cloud-desc').innerText = "Clear Sky Conditions";
+        }
+    }
+
+    // Event Listeners
+    document.getElementById('search-btn').addEventListener('click', fetchAndDecode);
+    document.getElementById('icao-input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') fetchAndDecode();
+    });
+
+    window.onload = fetchAndDecode;
+</script>
+
+</body>
+</html>
